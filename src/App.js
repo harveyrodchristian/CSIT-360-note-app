@@ -78,6 +78,10 @@ const COLOR_TAGS = [
   { name: 'violet', colorCode: '#8b5cf6', title: 'Inspiration' }
 ];
 
+// Read from .env file, or you can hardcode them directly here inside the quotes
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+
 export default function App() {
   // --- STATE ---
   const [notes, setNotes] = useState([]);
@@ -91,23 +95,6 @@ export default function App() {
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('noteapp_view_mode') || 'grid');
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('dark_theme') === 'true');
   
-  // Settings Modal & Backend Modes
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [connectionMode, setConnectionMode] = useState(() => localStorage.getItem('noteapp_conn_mode') || 'api'); // 'api' | 'supabase'
-  
-  // Custom API configuration
-  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('noteapp_api_url') || 'https://harveyrodchristian.gt.tc/api.php');
-  
-  // Supabase Configuration
-  const [supabaseUrl, setSupabaseUrl] = useState(() => localStorage.getItem('noteapp_sb_url') || '');
-  const [supabaseKey, setSupabaseKey] = useState(() => localStorage.getItem('noteapp_sb_key') || '');
-  
-  // Temp Modal state
-  const [tempConnMode, setTempConnMode] = useState('api');
-  const [tempApiUrl, setTempApiUrl] = useState('');
-  const [tempSbUrl, setTempSbUrl] = useState('');
-  const [tempSbKey, setTempSbKey] = useState('');
-  
   // Loading & error
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -117,42 +104,32 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      if (connectionMode === 'supabase') {
-        if (!supabaseUrl || !supabaseKey) {
-          throw new Error('Supabase URL and API Key are required. Click Connection in the sidebar to configure them.');
-        }
-        
-        // Fetch from Supabase REST API (order by created_at desc)
-        const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/notes?select=*&order=created_at.desc`, {
-          method: 'GET',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`Supabase returned status ${response.status}. Please check your credentials and make sure the notes table exists.`);
-        }
-        const data = await response.json();
-        setNotes(Array.isArray(data) ? data : []);
-      } else {
-        // Fetch from custom API
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-          throw new Error(`API Server returned status ${response.status}.`);
-        }
-        const data = await response.json();
-        setNotes(Array.isArray(data) ? data : []);
+      if (!SUPABASE_URL || !SUPABASE_KEY) {
+        throw new Error('Supabase URL and API Key are missing. Please add them to the .env file.');
       }
+      
+      // Fetch from Supabase REST API (order by created_at desc)
+      const response = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/notes?select=*&order=created_at.desc`, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Supabase returned status ${response.status}. Please check your credentials and make sure the notes table exists.`);
+      }
+      const data = await response.json();
+      setNotes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Connection error:", err);
       setError(err.message || 'Failed to connect to the database.');
     } finally {
       setLoading(false);
     }
-  }, [connectionMode, apiUrl, supabaseUrl, supabaseKey]);
+  }, []);
 
   // --- EFFECTS ---
   useEffect(() => {
@@ -175,51 +152,31 @@ export default function App() {
 
     setError(null);
     try {
-      if (connectionMode === 'supabase') {
-        const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/notes`, {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'return=representation' // Returns the created row
-          },
-          body: JSON.stringify({
-            title: title.trim(),
-            content: content.trim(),
-            color: color
-          })
-        });
+      const response = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/notes`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation' // Returns the created row
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          content: content.trim(),
+          color: color
+        })
+      });
 
-        if (!response.ok) {
-          throw new Error(`Failed to save note to Supabase. Status: ${response.status}`);
-        }
+      if (!response.ok) {
+        throw new Error(`Failed to save note to Supabase. Status: ${response.status}`);
+      }
 
-        const data = await response.json();
-        if (data && data[0]) {
-          setNotes(prevNotes => [data[0], ...prevNotes]);
-        } else {
-          // If return representation failed, re-fetch notes
-          fetchNotes();
-        }
+      const data = await response.json();
+      if (data && data[0]) {
+        setNotes(prevNotes => [data[0], ...prevNotes]);
       } else {
-        // Custom API Mode
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: title.trim(),
-            content: content.trim(),
-            color: color
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to create note on custom API.');
-        }
-
-        const newNote = await response.json();
-        setNotes(prevNotes => [newNote, ...prevNotes]);
+        // If return representation failed, re-fetch notes
+        fetchNotes();
       }
 
       // Reset form fields
@@ -234,70 +191,22 @@ export default function App() {
   const handleDeleteNote = async (id) => {
     setError(null);
     try {
-      if (connectionMode === 'supabase') {
-        const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/notes?id=eq.${id}`, {
-          method: 'DELETE',
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to delete note from Supabase. Status: ${response.status}`);
+      const response = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/rest/v1/notes?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
         }
+      });
 
-        setNotes(prevNotes => prevNotes.filter(note => note.id !== id));
-      } else {
-        // Custom API Mode
-        const deleteUrl = apiUrl.includes('.php')
-          ? (apiUrl.includes('?') ? `${apiUrl}&id=${id}` : `${apiUrl}?id=${id}`)
-          : `${apiUrl}/${id}`;
-
-        const response = await fetch(deleteUrl, {
-          method: 'DELETE'
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to delete note.');
-        }
-
-        setNotes(prevNotes => prevNotes.filter(note => note.id !== id));
+      if (!response.ok) {
+        throw new Error(`Failed to delete note from Supabase. Status: ${response.status}`);
       }
+
+      setNotes(prevNotes => prevNotes.filter(note => note.id !== id));
     } catch (err) {
       setError(err.message || 'Failed to delete note.');
     }
-  };
-
-  // --- SETTINGS CONTROLS ---
-  const openSettings = () => {
-    setTempConnMode(connectionMode);
-    setTempApiUrl(apiUrl);
-    setTempSbUrl(supabaseUrl);
-    setTempSbKey(supabaseKey);
-    setIsSettingsOpen(true);
-  };
-
-  const saveSettings = () => {
-    setConnectionMode(tempConnMode);
-    localStorage.setItem('noteapp_conn_mode', tempConnMode);
-
-    if (tempConnMode === 'api') {
-      const cleanUrl = tempApiUrl.trim();
-      if (cleanUrl) {
-        setApiUrl(cleanUrl);
-        localStorage.setItem('noteapp_api_url', cleanUrl);
-      }
-    } else {
-      const cleanUrl = tempSbUrl.trim();
-      const cleanKey = tempSbKey.trim();
-      setSupabaseUrl(cleanUrl);
-      setSupabaseKey(cleanKey);
-      localStorage.setItem('noteapp_sb_url', cleanUrl);
-      localStorage.setItem('noteapp_sb_key', cleanKey);
-    }
-    
-    setIsSettingsOpen(false);
   };
 
   // --- FILTERING LOGIC ---
@@ -365,11 +274,6 @@ export default function App() {
             {isDarkMode ? <IconSun /> : <IconMoon />}
             <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
           </button>
-          
-          <button className="control-btn" onClick={openSettings} title="Database settings">
-            <IconSettings />
-            <span>Connection</span>
-          </button>
         </div>
       </aside>
 
@@ -379,11 +283,7 @@ export default function App() {
         <header className="main-header">
           <div className="header-title-wrapper">
             <h1>Workspace</h1>
-            <p>
-              {connectionMode === 'supabase' 
-                ? 'Serverless PostgreSQL powered by Supabase' 
-                : 'Custom API powered by MySQL'}
-            </p>
+            <p>Serverless PostgreSQL powered by Supabase</p>
           </div>
           
           <div className="header-actions">
@@ -402,9 +302,6 @@ export default function App() {
               <div className="error-title">Database Connection Issue</div>
               <div className="error-desc">{error}</div>
             </div>
-            <button className="error-action-btn" onClick={openSettings}>
-              Configure Settings
-            </button>
           </div>
         )}
 
@@ -549,113 +446,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* 3. API SETTINGS MODAL */}
-      {isSettingsOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>Database Connection Settings</h2>
-              <button className="close-modal-btn" onClick={() => setIsSettingsOpen(false)}>
-                <IconClose />
-              </button>
-            </div>
-            
-            <div className="modal-field">
-              <label>Database Provider</label>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                <button
-                  type="button"
-                  onClick={() => setTempConnMode('api')}
-                  className={`btn-secondary ${tempConnMode === 'api' ? 'active' : ''}`}
-                  style={{ 
-                    flex: 1, 
-                    border: '1px solid var(--border-color)',
-                    backgroundColor: tempConnMode === 'api' ? 'var(--color-indigo-bg)' : 'transparent',
-                    color: tempConnMode === 'api' ? 'var(--accent-color)' : 'var(--text-primary)',
-                    fontWeight: tempConnMode === 'api' ? '600' : 'normal'
-                  }}
-                >
-                  Custom API (MySQL)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTempConnMode('supabase')}
-                  className={`btn-secondary ${tempConnMode === 'supabase' ? 'active' : ''}`}
-                  style={{ 
-                    flex: 1, 
-                    border: '1px solid var(--border-color)',
-                    backgroundColor: tempConnMode === 'supabase' ? 'var(--color-indigo-bg)' : 'transparent',
-                    color: tempConnMode === 'supabase' ? 'var(--accent-color)' : 'var(--text-primary)',
-                    fontWeight: tempConnMode === 'supabase' ? '600' : 'normal'
-                  }}
-                >
-                  Supabase (PostgreSQL)
-                </button>
-              </div>
-            </div>
-
-            {tempConnMode === 'api' ? (
-              <div className="modal-field">
-                <label>API Endpoint URL</label>
-                <input
-                  type="text"
-                  placeholder="e.g. http://localhost:5000/api/notes"
-                  value={tempApiUrl}
-                  onChange={(e) => setTempApiUrl(e.target.value)}
-                  className="modal-input"
-                />
-                <div className="modal-help-text">
-                  <p>Provide the REST API endpoint URL:</p>
-                  <ul style={{ paddingLeft: '16px', marginTop: '6px', listStyleType: 'disc' }}>
-                    <li style={{ marginBottom: '4px' }}>
-                      <strong>Local MySQL:</strong> Use <code>http://localhost:5000/api/notes</code>
-                    </li>
-                    <li>
-                      <strong>InfinityFree:</strong> Use <code>https://yourdomain.com/api.php</code>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="modal-field">
-                  <label>Supabase Project URL</label>
-                  <input
-                    type="text"
-                    placeholder="https://your-project-id.supabase.co"
-                    value={tempSbUrl}
-                    onChange={(e) => setTempSbUrl(e.target.value)}
-                    className="modal-input"
-                  />
-                </div>
-                <div className="modal-field">
-                  <label>Supabase Public Anon Key</label>
-                  <input
-                    type="password"
-                    placeholder="eyJhbGciOiJIUzI1NiIsIn..."
-                    value={tempSbKey}
-                    onChange={(e) => setTempSbKey(e.target.value)}
-                    className="modal-input"
-                  />
-                </div>
-                <div className="modal-help-text">
-                  <p>Find these in your Supabase project under <strong>Project Settings -> API</strong>.</p>
-                  <p style={{ marginTop: '4px' }}>Make sure to initialize your table using the SQL schema file: <code>server/supabase_schema.sql</code></p>
-                </div>
-              </>
-            )}
-            
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setIsSettingsOpen(false)}>
-                Cancel
-              </button>
-              <button className="btn-primary" onClick={saveSettings}>
-                Save Settings
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
