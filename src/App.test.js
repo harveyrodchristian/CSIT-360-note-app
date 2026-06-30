@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders Cozy Notes logo title', () => {
+test('renders NoteFlow brand title', () => {
   render(<App />);
-  const titleElement = screen.getByText(/Cozy Notes/i);
+  const titleElement = screen.getByText(/NoteFlow/i);
   expect(titleElement).toBeInTheDocument();
 });

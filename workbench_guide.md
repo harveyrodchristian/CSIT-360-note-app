@@ -1,4 +1,4 @@
-# MySQL Workbench Setup Guide 🐬
+w# MySQL Workbench Setup Guide 🐬
 
 This guide explains how to set up the MySQL Database for your Note Application using **MySQL Workbench**.
 
